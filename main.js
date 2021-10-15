@@ -1,7 +1,7 @@
 const {app, BrowserWindow, Menu} = require('electron');
 const isDev = require('electron-is-dev');
 let mainWindow;
-Menu.setApplicationMenu(null)
+// Menu.setApplicationMenu(null)
 app.on('ready', () => {
   mainWindow = new BrowserWindow({
     width: 1024,

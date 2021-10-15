@@ -10,6 +10,7 @@ const FileSearch = ({title, onFileSearch}) => {
   const closeInput = () => {
     setInputActive(false)
     setValue('')
+    onFileSearch('')
   }
   const enterPress = useKeyPress(13)
   const escPress = useKeyPress(27)
