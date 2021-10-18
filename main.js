@@ -1,5 +1,7 @@
 const {app, BrowserWindow, Menu} = require('electron');
 const isDev = require('electron-is-dev');
+
+
 let mainWindow;
 // Menu.setApplicationMenu(null)
 app.on('ready', () => {
@@ -7,7 +9,8 @@ app.on('ready', () => {
     width: 1024,
     height: 680,
     webPreferences: {
-      NodeIntegration: true,
+      nodeIntegration: true,
+      contextIsolation: false,
     }
   });
 

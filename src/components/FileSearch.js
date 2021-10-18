@@ -17,7 +17,6 @@ const FileSearch = ({title, onFileSearch}) => {
   useEffect(() => {
     if (enterPress && inputActive) {
       onFileSearch(value)
-      closeInput()
     } else if (escPress && inputActive) {
       closeInput()
     }
@@ -73,7 +72,6 @@ const FileSearch = ({title, onFileSearch}) => {
     </div>
   )
 }
-
 FileSearch.prototype = {
   title: PropTypes.string,
   onFileSearch: PropTypes.func.isRequired
