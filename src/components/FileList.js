@@ -9,19 +9,30 @@ const FileList = ({files, onFileClick, onSaveEdit, onFileDelete}) => {
   const [value, setValue] = useState('');
   const enterPress = useKeyPress(13)
   const escPress = useKeyPress(27)
-  const closeInput = () => {
+  const closeInput = (file) => {
     setEditStatus(false)
     setValue('')
+    if (file.isNew){
+      onFileDelete(file.id)
+    }
   }
   useEffect(() => {
-    if (enterPress && editStatus) {
-      const file = files.find(file => file.id == editStatus)
-      onSaveEdit(file.id, value)
-      closeInput()
+    const file = files.find(file => file.id === editStatus)
+    if (enterPress && editStatus && value.trim() !== '') {
+      onSaveEdit(file.id, value, file.isNew)
+      setEditStatus(false)
+      setValue('')
     } else if (escPress && editStatus) {
-      closeInput()
+      closeInput(file)
     }
-  })
+  }, [enterPress, escPress])
+  useEffect(() => {
+    const newFile = files.find(file => !!file.isNew)
+    if (!!newFile) {
+      setEditStatus(newFile.id);
+      setValue(newFile.title);
+    }
+  }, [files]);
   return (
     <ul className="list-group list-group-flush file-list">
       {
@@ -30,7 +41,7 @@ const FileList = ({files, onFileClick, onSaveEdit, onFileDelete}) => {
             className="list-group-item bg-ligth row d-flex align-items-center file-item"
             key={file.id}
           >
-            { (editStatus !== file.id) ?      
+            { (editStatus !== file.id) && !file.isNew &&  // no input 
               <>  
                 <span className="col-2">
                   <FontAwesomeIcon
@@ -66,23 +77,26 @@ const FileList = ({files, onFileClick, onSaveEdit, onFileDelete}) => {
                     icon={faTrash}
                   />
                 </button>
-              </> :
+              </> 
+            }
+            {((editStatus === file.id) || !!file.isNew) && // input
               <>
-                <input 
+                <input
                   className="from-control col-10"
                   value={value}
+                  placeholder="请输入标题"
                   onChange={(e) => {setValue(e.target.value)}}
                 >
                 </input>
                 <button 
                   type="button"
                   className="icon-btn col-2"
-                  onClick={closeInput}
+                  onClick={() => closeInput(file)}
                   >
                   <FontAwesomeIcon
-                  icon={faTimes}
-                  size="lg"
-                  title="关闭"
+                    icon={faTimes}
+                    size="lg"
+                    title="关闭"
                   />
                 </button>
               </>

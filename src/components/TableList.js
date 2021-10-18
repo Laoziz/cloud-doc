@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React from 'react';
 import PropTypes from 'prop-types';
 import classNames from 'classnames';
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
@@ -12,7 +12,7 @@ const TableList = ({files, activeId, unSaveId, onTabClick, onCloseTab}) => {
           const unSaveicon = unSaveId.includes(file.id);
           const fClassName = classNames({
             'nav-link': true,
-            'active': file.id == activeId,
+            'active': file.id === activeId,
             'withUnsaved': unSaveicon
           })
           return (
