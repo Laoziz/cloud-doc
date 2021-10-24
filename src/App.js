@@ -4,36 +4,36 @@ import { faPlus, faFileImport, faSave} from '@fortawesome/free-solid-svg-icons';
 import React, {useState, useEffect} from 'react';
 import FileSearch from './components/FileSearch';
 import FileList from './components/FileList';
-import data from '../src/utils/data';
+// import data from '../src/utils/data';
 import BtnBottom from './components/BtnBottom';
 import TableList from './components/TableList';
 import {flattenArr, objToArr} from '../src/utils/helper';
 import fileHelper from './utils/fileHelper';
+import useIpcRender from './hooks/useIpcRender';
 import './App.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'easymde/dist/easymde.min.css';
-const {join} = window.require('path');
+const {join, basename, extname, dirname} = window.require('path');
 const {remote} = window.require('electron');
-// const Store = window.require('electron-store');
-// const fileStore = new Store();
-// fileStore.set('file', 'my boby');
-// console.log(fileStore.get('file'));
-// const saveFileToStore = (files) => {
-//   // const saveFileObj = objToArr(files).reduce((result, file) => {
-//   //   const {id, path, title, createTS} = file;
-//   //   result[id] = {id,path,title,createTS};
-//   //   return result;
-//   // }, {});
-//   // fileStore.set('files', saveFileObj);
-// }
+
+console.log('start')
+let Store = window.require('electron-store');
+const fileStore = new Store({'name': 'Files Data'});
+const saveFileToStore = (files) => {
+  const saveFileObj = objToArr(files).reduce((result, file) => {
+    const {id, path, title, createTS} = file;
+    result[id] = {id, path ,title,createTS};
+    return result;
+  }, {});
+  fileStore.set('files', saveFileObj);
+}
 function App() {
-  const fileFlatten = flattenArr(data);
-  const [files, setFiles] = useState(fileFlatten)
+  const [files, setFiles] = useState(fileStore.get('files') || {})
   const [activeFileID, setActiveFileID] = useState();
   const [openFileIDs, setOpenFileIDs] = useState([])
   const [unsaveFileIDs, setUnsaveFileIDs] = useState([])
   const [searchFiles, setSearchFiles] = useState([])
-  const saveLocation = remote.app.getPath('documents');
+  const saveLocation = 'C:\\Users\\laoziz\\Desktop\\test-new';
   const openFiles = openFileIDs.map(openID => {
     return files[openID]
   });
@@ -42,6 +42,13 @@ function App() {
 
   // file click
   const FileClick = (fileID) => {
+    const currentFile = files[fileID];
+    if (!currentFile.isLoaded) {
+      fileHelper.readFile(currentFile.path).then(value => {
+        const newFile = {...files[fileID], body: value, isLoaded: true}
+        setFiles({...files, [fileID]: newFile})
+      });
+    }
     if (!openFileIDs.includes(fileID)) {
       setOpenFileIDs([...openFileIDs, fileID])
     }
@@ -66,25 +73,26 @@ function App() {
 
   // file change
   const FileChange = (fileID, value) => {
-    const newFiles = {...files, [fileID]: {...files[fileID], body: value}}
-    setFiles(newFiles)
-    setUnsaveFileIDs(unsaveFileIDs.includes(fileID) ? unsaveFileIDs : [...unsaveFileIDs, fileID])
+    if (value !== files[fileID].body) {
+      const newFiles = {...files, [fileID]: {...files[fileID], body: value}}
+      setFiles(newFiles)
+      setUnsaveFileIDs(unsaveFileIDs.includes(fileID) ? unsaveFileIDs : [...unsaveFileIDs, fileID])
+    }
   }
 
   // save title
   const updateFileName = (fileID, title, isNew) => {
-    const newFiles = {...files, [fileID]: {...files[fileID], title, isNew: false}}
-    const newPath = join(saveLocation, `${title}.md`);
+    const newPath = isNew ? join(saveLocation, `${title}.md`): join(dirname(files[fileID].path), `${title}.md`);
+    const newFiles = {...files, [fileID]: {...files[fileID], title, isNew: false, path: newPath}}
     if (isNew) {
       fileHelper.writeFile(newPath, files[fileID].body).then(() => {
         setFiles(newFiles);
-        // saveFileToStore(newFiles);
+        saveFileToStore(newFiles);
       });
     } else {
-      fileHelper.renameFile(join(saveLocation, `${files[fileID].title}.md`), 
-      newPath).then(() => {
+      fileHelper.renameFile(files[fileID].path, newPath).then(() => {
           setFiles(newFiles)
-          // saveFileToStore(newFiles);
+          saveFileToStore(newFiles);
       });
     }
     
@@ -101,12 +109,20 @@ function App() {
 
   // delete file
   const DeleteFile = (fileID) => {
-    const {[fileID]: value, ...deleteFiles} = files
-    setFiles(deleteFiles)
-    CloseTab(fileID)
-    if (searchFiles.length > 0) {
-      const newSearchFiles = searchFiles.filter(file => file.id !== fileID);
-      setSearchFiles(newSearchFiles)
+    const {[fileID]: file, ...deleteFiles} = files
+    if (file.isNew) {
+      setFiles(deleteFiles)
+    } else {
+      fileHelper.deleteFile(file.path).catch(err => {
+        console.log('deleteFile:', err.toString())
+      })
+      setFiles(deleteFiles)
+      saveFileToStore(deleteFiles)
+      CloseTab(fileID)
+      if (searchFiles.length > 0) {
+        const newSearchFiles = searchFiles.filter(file => file.id !== fileID);
+        setSearchFiles(newSearchFiles)
+      }
     }
   }
 
@@ -131,7 +147,8 @@ function App() {
         body: `this file uuid: ${uuid}`,
         title: '',
         createTS: new Date().getTime(),
-        isNew: true
+        isNew: true,
+        path: ''
       }
     };
     setFiles(newFiles);
@@ -139,15 +156,50 @@ function App() {
 
   //export file
   const exportFile = () => {
-
+    remote.dialog.showOpenDialog({
+      title: '选择导入的mkdown文件',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        {name: 'MakeDown Files', extensions: ['md']}
+      ]
+    }, paths => {
+      console.log(paths)
+      if (Array.isArray(paths)) {
+        const filteredPaths = paths.filter(path => {
+          const isAdded = Object.values(files).find(file => file.path === path)
+          return !isAdded
+        })
+        const addFiles = filteredPaths.map(path => {
+          return {
+            id: uuidv4(),
+            path,
+            title: basename(path, extname(path))
+          }
+        })
+        const newFiles = {...files, ...flattenArr(addFiles)}
+        setFiles(newFiles)
+        saveFileToStore(newFiles)
+        if (addFiles.length > 0) {
+          remote.dialog.showMessageBox({
+            type: 'info',
+            title: `成功导入${addFiles.length}个文件`,
+            message: `成功导入${addFiles.length}个文件`
+          })
+        }
+      }
+    })
   }
 
   const saveCurrentFile = () => {
-    fileHelper.writeFile(join(saveLocation, `${activeFile.title}.md`), activeFile.body).then(() => {
+    fileHelper.writeFile(activeFile.path, activeFile.body).then(() => {
       setUnsaveFileIDs(unsaveFileIDs.filter(fileID => fileID !== activeFile.id));
     });
   }
-  
+  useIpcRender({
+    'create-new-file': createNewFile,
+    'import-file': exportFile,
+    'save-edit-file': saveCurrentFile,
+  });
   const FileArr = searchFiles.length > 0 ? searchFiles : filesArr;
   return (
     <div className="App container-fluid px-0 py-0">
@@ -203,15 +255,9 @@ function App() {
                 onChange={(value) => {FileChange(activeFile.id, value)}}
                 options={
                   {
-                    minHeight: '599px',
+                    minHeight: '625px',
                   }
                 }
-              />
-              <BtnBottom
-                text="保存"
-                colorClass="btn-primary"
-                icon={faSave}
-                onClick={saveCurrentFile}
               />
             </>
           }

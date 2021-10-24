@@ -4,6 +4,8 @@ import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import { faEdit, faTrash, faTimes } from '@fortawesome/free-solid-svg-icons'
 import { faMarkdown } from '@fortawesome/free-brands-svg-icons'
 import useKeyPress from '../hooks/useKeyPress';
+import useContextMenu from '../hooks/useContextMenu';
+import {getParentNode} from '../utils/helper'
 const FileList = ({files, onFileClick, onSaveEdit, onFileDelete}) => {
   const [editStatus, setEditStatus] = useState(false);
   const [value, setValue] = useState('');
@@ -16,6 +18,37 @@ const FileList = ({files, onFileClick, onSaveEdit, onFileDelete}) => {
       onFileDelete(file.id)
     }
   }
+  const clickItem = useContextMenu([
+    {
+      label: '打开',
+      click: () => {
+        const parentElement = getParentNode(clickItem.current, 'file-item');
+        if (!!parentElement) {
+          onFileClick(parentElement.dataset.id);
+        }
+      }
+    },
+    {
+      label: '重命名',
+      click: () => {
+        const parentElement = getParentNode(clickItem.current, 'file-item');
+        if (!!parentElement) {
+          setValue(parentElement.dataset.title);
+          setEditStatus(parentElement.dataset.id);
+        }
+      }
+    },
+    {
+      label: '删除',
+      click: () => {
+        const parentElement = getParentNode(clickItem.current, 'file-item');
+        if (!!parentElement) {
+          console.log('id', parentElement.dataset.id);
+          onFileDelete(parentElement.dataset.id);
+        }
+      }
+    }
+  ], '.file-list', [files]);
   useEffect(() => {
     const file = files.find(file => file.id === editStatus)
     if (enterPress && editStatus && value.trim() !== '') {
@@ -40,6 +73,8 @@ const FileList = ({files, onFileClick, onSaveEdit, onFileDelete}) => {
           <li
             className="list-group-item bg-ligth row d-flex align-items-center file-item"
             key={file.id}
+            data-id={file.id}
+            data-title={file.title}
           >
             { (editStatus !== file.id) && !file.isNew &&  // no input 
               <>  
