@@ -19,6 +19,7 @@ const {remote} = window.require('electron');
 console.log('start')
 let Store = window.require('electron-store');
 const fileStore = new Store({'name': 'Files Data'});
+const settingsStore = new Store({name: 'Settings'})
 const saveFileToStore = (files) => {
   const saveFileObj = objToArr(files).reduce((result, file) => {
     const {id, path, title, createTS} = file;
@@ -33,7 +34,8 @@ function App() {
   const [openFileIDs, setOpenFileIDs] = useState([])
   const [unsaveFileIDs, setUnsaveFileIDs] = useState([])
   const [searchFiles, setSearchFiles] = useState([])
-  const saveLocation = 'C:\\Users\\laoziz\\Desktop\\test-new';
+  console.log('saveFileLocation:', settingsStore.get('savedFileLocation'));
+  const saveLocation = settingsStore.get('savedFileLocation') || remote.app.getPath('documents');
   const openFiles = openFileIDs.map(openID => {
     return files[openID]
   });
@@ -85,6 +87,7 @@ function App() {
     const newPath = isNew ? join(saveLocation, `${title}.md`): join(dirname(files[fileID].path), `${title}.md`);
     const newFiles = {...files, [fileID]: {...files[fileID], title, isNew: false, path: newPath}}
     if (isNew) {
+      console.log('newPath:', newPath);
       fileHelper.writeFile(newPath, files[fileID].body).then(() => {
         setFiles(newFiles);
         saveFileToStore(newFiles);
