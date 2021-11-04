@@ -7,25 +7,29 @@ import FileList from './components/FileList';
 // import data from '../src/utils/data';
 import BtnBottom from './components/BtnBottom';
 import TableList from './components/TableList';
-import {flattenArr, objToArr} from '../src/utils/helper';
+import {flattenArr, objToArr, timestampToString} from '../src/utils/helper';
 import fileHelper from './utils/fileHelper';
 import useIpcRender from './hooks/useIpcRender';
 import './App.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'easymde/dist/easymde.min.css';
+import Loader from './components/Loader';
 const {join, basename, extname, dirname} = window.require('path');
-const {remote} = window.require('electron');
+const {remote, ipcRenderer} = window.require('electron');
 
 console.log('start')
 let Store = window.require('electron-store');
 const fileStore = new Store({'name': 'Files Data'});
 const settingsStore = new Store({name: 'Settings'})
+const getAutoSync = () => ['accessKey', 'secretKey', 'bucketName', 'enableAutoSync'].every(key => !!settingsStore.get(key))
 const saveFileToStore = (files) => {
   const saveFileObj = objToArr(files).reduce((result, file) => {
-    const {id, path, title, createTS} = file;
-    result[id] = {id, path ,title,createTS};
+    console.log('file:',file)
+    const {id, path, title, createTS, isSynced, updateAt} = file;
+    result[id] = {id, path ,title,createTS, isSynced, updateAt};
     return result;
   }, {});
+  console.log('saveFileObj:',saveFileObj);
   fileStore.set('files', saveFileObj);
 }
 function App() {
@@ -34,22 +38,28 @@ function App() {
   const [openFileIDs, setOpenFileIDs] = useState([])
   const [unsaveFileIDs, setUnsaveFileIDs] = useState([])
   const [searchFiles, setSearchFiles] = useState([])
-  console.log('saveFileLocation:', settingsStore.get('savedFileLocation'));
+  const [ isLoading, setLoading ] = useState(false)
   const saveLocation = settingsStore.get('savedFileLocation') || remote.app.getPath('documents');
   const openFiles = openFileIDs.map(openID => {
     return files[openID]
   });
+
   const activeFile = files[activeFileID];
   const filesArr = objToArr(files);
-
   // file click
   const FileClick = (fileID) => {
     const currentFile = files[fileID];
-    if (!currentFile.isLoaded) {
-      fileHelper.readFile(currentFile.path).then(value => {
-        const newFile = {...files[fileID], body: value, isLoaded: true}
-        setFiles({...files, [fileID]: newFile})
-      });
+    const {id, title, path, isLoaded} = currentFile;
+    if (!isLoaded) {
+      if (getAutoSync()) {
+        console.log('download-file')
+        ipcRenderer.send('download-file', {key: `${title}.md`, path, id});
+      } else {
+        fileHelper.readFile(currentFile.path).then(value => {
+          const newFile = {...files[fileID], body: value, isLoaded: true}
+          setFiles({...files, [fileID]: newFile})
+        });
+      }
     }
     if (!openFileIDs.includes(fileID)) {
       setOpenFileIDs([...openFileIDs, fileID])
@@ -151,7 +161,8 @@ function App() {
         title: '',
         createTS: new Date().getTime(),
         isNew: true,
-        path: ''
+        path: '',
+
       }
     };
     setFiles(newFiles);
@@ -194,18 +205,63 @@ function App() {
   }
 
   const saveCurrentFile = () => {
-    fileHelper.writeFile(activeFile.path, activeFile.body).then(() => {
-      setUnsaveFileIDs(unsaveFileIDs.filter(fileID => fileID !== activeFile.id));
-    });
+    if (activeFile) {
+      const {title, body, path} = activeFile;
+      fileHelper.writeFile(path, body).then(() => {
+        setUnsaveFileIDs(unsaveFileIDs.filter(fileID => fileID !== activeFile.id));
+        console.log('开始同步')
+        if (getAutoSync()) {
+          console.log('同步上传')
+          ipcRenderer.send('upload-file', {key: `${title}.md`, path});
+        }
+      });
+    }
+  }
+  const activeFileUploaded = (event, message) => {
+    console.log('activeFileUploaded')
+    const {id} = activeFile;
+    const modifiedFile = {...files[id], isSynced: true, updateAt: new Date().getTime()}
+    const newFiles = {...files, [id]: modifiedFile};
+    saveFileToStore(newFiles)
+  }
+  const fileDownloaded = (event, message) => {
+    const currentFile = files[message.id];
+    const {id, path} = currentFile;
+    fileHelper.readFile(path).then(value => {
+      let newFile 
+      if (message.status === 'download-success') {
+        newFile = {...files[id], body: value, isLoaded: true, isSynced: true, updateAt: new Date().getTime()}
+      } else {
+        newFile = {...files[id], body: value, isLoaded: true}
+      }
+      const newFiles = {...files, [id]: newFile}
+      setFiles(newFiles)
+    })
+  }
+  const filesUploaded = () => {
+    const newFiles = objToArr(files).reduce((result, file) => {
+      const currentTime = new Date().getTime();
+      result[file.id] = {...file, isSynced: true, updateAt: currentTime};
+      return result;
+    }, {})
+    setFiles(newFiles);
+    saveFileToStore(newFiles);
   }
   useIpcRender({
     'create-new-file': createNewFile,
     'import-file': exportFile,
     'save-edit-file': saveCurrentFile,
+    'active-file-uploaded': activeFileUploaded,
+    'file-downloaded': fileDownloaded,
+    'files-uploaded': filesUploaded,
+    'loading-status': (message, status) => {console.log('loading-status', status);setLoading(status)}
   });
   const FileArr = searchFiles.length > 0 ? searchFiles : filesArr;
+  console.log('isLoading',isLoading)
   return (
     <div className="App container-fluid px-0 py-0">
+      {}
+      <Loader/>
       <div className="row no-gutters">
         <div className="col-3 bg-light left-panel">
           <FileSearch
@@ -259,9 +315,13 @@ function App() {
                 options={
                   {
                     minHeight: '625px',
+                    autofocus: true,
                   }
                 }
               />
+              {activeFile.isSynced && 
+                <span className="sync-status">已同步，上次同步时间{timestampToString(activeFile.updateAt)}</span>
+              }
             </>
           }
 

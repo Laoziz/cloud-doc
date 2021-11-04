@@ -74,6 +74,11 @@ class QiniuManage {
       return Promise.reject({ err: err.response })
     })
   }
+  getStat(key) {
+    return new Promise((resolve, reject) => {
+      this.bucketManager.stat(this.bucket, key, this._handleCallback(resolve, reject));
+    })
+  }
   _handleCallback(resolve, reject) {
     return (respErr, respBody, respInfo) => {
       if (respErr) {

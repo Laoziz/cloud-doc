@@ -10,7 +10,6 @@ const $ = (selector) => {
 
 document.addEventListener('DOMContentLoaded', () => {
   let savedLocation = settingsStore.get('savedFileLocation')
-  console.log('saveFileLocation:', savedLocation);
   if (savedLocation) {
     $('#savedFileLocation').value = savedLocation
   }
